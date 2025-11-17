@@ -1,7 +1,7 @@
 package com.example.headshaker
 
 import android.Manifest
-import android.app.Activity
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import androidx.activity.ComponentActivity
@@ -22,6 +22,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import android.app.Activity
+import android.content.Intent
 
 class MainActivity : ComponentActivity() {
 
@@ -30,12 +34,15 @@ class MainActivity : ComponentActivity() {
     private var opcionSeleccionada by mutableStateOf(0)
     private lateinit var poseController: PoseController
 
+    // CameraX helpers
+    private lateinit var cameraExecutor: ExecutorService
+
     private val speechLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             val data = result.data
             if (result.resultCode == RESULT_OK && data != null) {
-
-                val texto = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.get(0) ?: ""
+                val texto =
+                    data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.get(0) ?: ""
 
                 voice.procesarTexto(
                     texto,
@@ -50,17 +57,31 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+    private val cameraPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                startCamera()
+            } else {
+                voice.hablar("Necesito permiso de cámara para detectar movimientos.")
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Inicializamos el controlador externo
+        // Inicializamos el controlador de voz
         voice = VoiceController(this, speechLauncher)
 
-        ActivityCompat.requestPermissions(
-            this,
-            arrayOf(Manifest.permission.CAMERA),
-            1001
-        )
+        // Executor para ImageAnalysis
+        cameraExecutor = Executors.newSingleThreadExecutor()
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+            == PackageManager.PERMISSION_GRANTED
+        ) {
+            startCamera()
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
 
         setContent {
             HeadShakerTheme {
@@ -73,7 +94,54 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Inicia CameraX y configura ImageAnalysis con el PoseController
+    private fun startCamera() {
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+        cameraProviderFuture.addListener({
+            val cameraProvider = cameraProviderFuture.get()
+
+            // ImageAnalysis: solo analizamos frames (no mostramos preview necesario)
+            val imageAnalysis = ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
+
+            // Inicializamos PoseController PASÁNDOLE el analyzer
+            poseController = PoseController(
+                this,
+                onMenuMove = {
+                    opcionSeleccionada = (opcionSeleccionada + 1) % opciones.size
+                },
+                onMenuSelect = {
+                    onOpcionSeleccionada(opcionSeleccionada)
+                },
+                onBigMovement = {
+                    voice.iniciarReconocimiento()
+                }
+            )
+
+            // Asignamos el analyzer de PoseController
+            imageAnalysis.setAnalyzer(cameraExecutor, poseController.getAnalyzer())
+
+            // Seleccionamos cámara frontal (ajusta si quieres trasera)
+            val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
+
+            try {
+                // Unbind antes de bindear, para evitar excepciones al reconfigurar
+                cameraProvider.unbindAll()
+                // Bind solo ImageAnalysis (no es obligatorio añadir Preview)
+                cameraProvider.bindToLifecycle(
+                    this, cameraSelector, imageAnalysis
+                )
+            } catch (exc: Exception) {
+                exc.printStackTrace()
+                voice.hablar("Error al iniciar la cámara: ${exc.message}")
+            }
+        }, ContextCompat.getMainExecutor(this))
+    }
+
     override fun onDestroy() {
+        poseController.stop()
+        cameraExecutor.shutdown()
         voice.destruir()
         super.onDestroy()
     }
