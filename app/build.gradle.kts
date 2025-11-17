@@ -42,6 +42,16 @@ android {
 }
 
 dependencies {
+    val camerax_version = "1.3.1"
+
+    implementation("androidx.camera:camera-core:$camerax_version")
+    implementation("androidx.camera:camera-camera2:$camerax_version")
+    implementation("androidx.camera:camera-lifecycle:$camerax_version")
+    implementation("androidx.camera:camera-view:$camerax_version")
+    implementation("androidx.camera:camera-video:$camerax_version")
+    implementation("androidx.camera:camera-extensions:$camerax_version")
+    implementation("com.google.mlkit:pose-detection:17.0.0")
+    implementation("com.google.mlkit:pose-detection-accurate:17.0.0")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)

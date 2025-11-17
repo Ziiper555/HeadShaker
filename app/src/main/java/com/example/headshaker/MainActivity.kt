@@ -1,11 +1,15 @@
 package com.example.headshaker
 
+import android.Manifest
 import android.app.Activity
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import com.example.headshaker.ui.theme.HeadShakerTheme
@@ -16,12 +20,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var voice: VoiceController
     private val opciones = listOf("Jugar", "Configuración", "Información", "Salir")
     private var opcionSeleccionada by mutableStateOf(0)
+    private lateinit var poseController: PoseController
 
     private val speechLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -48,6 +55,12 @@ class MainActivity : ComponentActivity() {
 
         // Inicializamos el controlador externo
         voice = VoiceController(this, speechLauncher)
+
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.CAMERA),
+            1001
+        )
 
         setContent {
             HeadShakerTheme {
