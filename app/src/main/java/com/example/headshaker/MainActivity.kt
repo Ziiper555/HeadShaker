@@ -107,14 +107,14 @@ class MainActivity : ComponentActivity() {
 
             // Inicializamos PoseController PASÁNDOLE el analyzer
             poseController = PoseController(
-                this,
                 onMenuMove = {
-                    opcionSeleccionada = (opcionSeleccionada + 1) % opciones.size
+                    opcionSeleccionada =
+                        (opcionSeleccionada + 1 + opciones.size) % opciones.size
                 },
                 onMenuSelect = {
                     onOpcionSeleccionada(opcionSeleccionada)
                 },
-                onBigMovement = {
+                onListen = {
                     voice.iniciarReconocimiento()
                 }
             )
