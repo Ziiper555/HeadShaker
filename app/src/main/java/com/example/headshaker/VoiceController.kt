@@ -56,7 +56,7 @@ class VoiceController(
                 hablar("Bajando opción")
             }
 
-            "seleccionar" in t || "aceptar" in t -> {
+            "selecciona" in t || "acepta" in t -> {
                 onSeleccion()
             }
 
