@@ -54,7 +54,9 @@ dependencies {
     implementation("com.google.mlkit:face-mesh-detection:16.0.0-beta3")
     implementation("com.google.mlkit:common:17.0.1")
     implementation("com.google.ar:core:1.33.0")
-    api(project(":sceneformux"))
+    api(project(":sceneformux")) {
+        exclude(group = "com.google.ar", module = "core")
+    }
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)

@@ -173,7 +173,10 @@ class MainActivity : ComponentActivity() {
         voice.hablar("Has seleccionado $opcion")
 
         when (opcion) {
-            "Jugar" -> { /* TODO: Aquí iría el intent para la ARActivity */ }
+            "Jugar" -> {
+                val intent = Intent(this, ArGameActivity::class.java)
+                startActivity(intent)
+            }
             "Configuración" -> { /* TODO */ }
             "Información" -> { /* TODO */ }
             "Salir" -> { finish() }
