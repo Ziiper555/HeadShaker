@@ -46,12 +46,12 @@ class VoiceController(
         val t = texto.lowercase()
 
         when {
-            "subir" in t || "arriba" in t -> {
+            "subir" in t || "arriba" in t || "sube" in t -> {
                 onMenuChange(-1)
                 hablar("Subiendo opción")
             }
 
-            "bajar" in t || "abajo" in t -> {
+            "baja" in t || "abajo" in t -> {
                 onMenuChange(1)
                 hablar("Bajando opción")
             }
