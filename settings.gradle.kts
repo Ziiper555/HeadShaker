@@ -1,16 +1,11 @@
 pluginManagement {
     repositories {
-        google {
-            content {
-                includeGroupByRegex("com\\.android.*")
-                includeGroupByRegex("com\\.google.*")
-                includeGroupByRegex("androidx.*")
-            }
-        }
+        google()
         mavenCentral()
         gradlePluginPortal()
     }
 }
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
@@ -20,4 +15,10 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "HeadShaker"
+
 include(":app")
+include(":sceneform")
+include(":sceneformux")
+
+project(":sceneform").projectDir = File("sceneformsrc/sceneform")
+project(":sceneformux").projectDir = File("sceneformux/ux")
