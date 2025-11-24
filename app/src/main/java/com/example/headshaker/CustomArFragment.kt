@@ -6,6 +6,7 @@ import android.view.View
 import com.google.ar.core.Config
 import com.google.ar.core.Session
 import com.google.ar.sceneform.ux.ArFragment
+import java.util.EnumSet
 
 class CustomArFragment : ArFragment() {
 
@@ -27,30 +28,20 @@ class CustomArFragment : ArFragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        // Ocultar la mano de detección y el plano
+        planeDiscoveryController.hide()
+        planeDiscoveryController.setInstructionView(null)
+        arSceneView.planeRenderer.isEnabled = false
         onSceneReadyListener?.onSceneReady()
     }
 
-    override fun getSessionConfiguration(session: Session?): Config {
-        val config = Config(session)
-        config.updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
-
-        session?.configure(config)
-
-        // Ocultar la mano de detección
-        planeDiscoveryController.hide()
-        planeDiscoveryController.setInstructionView(null)
-
-        // Desactivar detección de planos
-        arSceneView.planeRenderer.isEnabled = false
-
+    override fun getSessionConfiguration(session: Session): Config {
+        val config = super.getSessionConfiguration(session)
+        config.augmentedFaceMode = Config.AugmentedFaceMode.MESH3D
         return config
     }
 
-    override fun getAdditionalPermissions(): Array<String> {
-        return emptyArray()
-    }
-
-    override fun isArRequired(): Boolean {
-        return true
+    override fun getSessionFeatures(): Set<Session.Feature> {
+        return EnumSet.of(Session.Feature.FRONT_CAMERA)
     }
 }
