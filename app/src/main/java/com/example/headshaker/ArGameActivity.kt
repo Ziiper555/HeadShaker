@@ -40,18 +40,31 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
             }
 
         arFragment.arSceneView.scene.addOnUpdateListener {
+            if (bolaNode == null) {
+                return@addOnUpdateListener
+            }
+
             val faces = arFragment.arSceneView.session?.getAllTrackables(AugmentedFace::class.java)
 
             val firstTrackedFace = faces?.firstOrNull { it.trackingState == TrackingState.TRACKING }
 
             if (firstTrackedFace != null) {
+                bolaNode!!.isEnabled = true
                 // Actualizar la posición de la bola a la de la nariz
                 val nosePose = firstTrackedFace.getRegionPose(AugmentedFace.RegionType.NOSE_TIP)
-                bolaNode?.worldPosition = Vector3(nosePose.tx(), nosePose.ty(), nosePose.tz())
-                bolaNode?.isEnabled = true
+                bolaNode!!.worldPosition = Vector3(nosePose.tx(), nosePose.ty(), nosePose.tz())
+
+                // --- LÓGICA DE ESCALADO PARA TAMAÑO CONSTANTE ---
+                val cameraPosition = arFragment.arSceneView.scene.camera.worldPosition
+                val distance = Vector3.subtract(cameraPosition, bolaNode!!.worldPosition).length()
+
+                // Para mantener un tamaño aparente constante, el tamaño real debe ser
+                // proporcional a la distancia desde la cámara. Al escalar por la distancia,
+                // el tamaño aparente se mantiene constante e igual al tamaño original (radio de 0.02f).
+                bolaNode!!.localScale = Vector3(distance, distance, distance)
             } else {
                 // Ocultar la bola si no hay caras
-                bolaNode?.isEnabled = false
+                bolaNode!!.isEnabled = false
             }
         }
     }
