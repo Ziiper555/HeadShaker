@@ -3,6 +3,7 @@ package com.example.headshaker
 import android.annotation.SuppressLint
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
+import com.google.ar.sceneform.math.Vector3
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.facemesh.FaceMeshDetection
 import com.google.mlkit.vision.facemesh.FaceMeshDetector
@@ -13,6 +14,7 @@ class FaceController(
     private val onListen: () -> Unit
 ) {
     private val detector: FaceMeshDetector
+    private var nosePosition: Vector3? = null
 
     // Tiempo mínimo manteniendo cejas levantadas (ms)
     private val holdTime = 2000L
@@ -29,6 +31,8 @@ class FaceController(
         detector = FaceMeshDetection.getClient(options)
     }
 
+    fun getNosePosition3D(): Vector3? = nosePosition
+
     fun getAnalyzer(): ImageAnalysis.Analyzer = ImageAnalysis.Analyzer(::processImageProxy)
 
     @SuppressLint("UnsafeOptInUsageError")
@@ -44,9 +48,17 @@ class FaceController(
             .addOnSuccessListener { faceMeshes ->
                 if (faceMeshes.isNotEmpty()) {
                     val mesh = faceMeshes[0]  // Tomamos la primera cara
-                    detectEyebrowRaise(mesh.allPoints)
+                    val points = mesh.allPoints
+
+                    // Actualizar posición de la nariz
+                    val nose = points[1]  // MediaPipe: landmark índice 1 = nariz (aprox)
+                    nosePosition = Vector3(nose.position.x, nose.position.y, nose.position.z)
+
+                    // Detectar cejas levantadas
+                    detectEyebrowRaise(points)
                 } else {
                     eyebrowRaiseStart = null
+                    nosePosition = null
                 }
             }
             .addOnCompleteListener {
