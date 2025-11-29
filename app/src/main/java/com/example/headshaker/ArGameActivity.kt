@@ -1,5 +1,7 @@
 package com.example.headshaker
 
+import android.media.AudioAttributes
+import android.media.SoundPool
 import android.os.Bundle
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -17,18 +19,22 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
     private var bolaNode: Node? = null
     private lateinit var scoreTextView: TextView
 
-    // --- NUEVAS PROPIEDADES PARA EL JUEGO ---
+    // --- PROPIEDADES PARA EL JUEGO ---
     private val bloques = mutableListOf<Node>()
     private var lastBlockSpawnTime = 0L
     private var blockMaterial: Material? = null
     private var fallSpeed = 0.09f // metros por segundo
-    private var spawnInterval = 3000L // milisegundos para crear un bloque
-    private val gameDistance = 0.7f // Distancia (profundidad) FIJA a la que transcurre el juego
+    private var spawnInterval = 3000L // milisegundos
+    private val gameDistance = 0.7f
     private var score = 0
 
     // --- PROPIEDADES PARA ANIMACIÓN ---
     private val animatingBlocks = mutableMapOf<Node, Long>()
     private val animationDuration = 200L
+
+    // --- PROPIEDADES PARA SONIDO ---
+    private lateinit var soundPool: SoundPool
+    private var popSoundId: Int = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,42 +45,45 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
         scoreTextView = findViewById(R.id.score_text)
 
         arFragment.setOnSceneReadyListener(this)
+
+        // --- INICIALIZAR SOUNDPOOL ---
+        val audioAttributes = AudioAttributes.Builder()
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .setUsage(AudioAttributes.USAGE_GAME)
+            .build()
+        soundPool = SoundPool.Builder().setMaxStreams(5).setAudioAttributes(audioAttributes).build()
+        popSoundId = soundPool.load(this, R.raw.pop, 1)
+        // ---------------------------
     }
 
     override fun onSceneReady() {
-        // Material para la bola (la dejamos para referencia visual)
+        // Material para la bola
         MaterialFactory.makeOpaqueWithColor(this, com.google.ar.sceneform.rendering.Color(android.graphics.Color.RED))
             .thenAccept { material ->
-                val sphereRenderable = ShapeFactory.makeSphere(
-                    0.02f,                // radio en metros
-                    Vector3(0f, 0f, 0f),  // centro
-                    material
-                )
-
-                val node = Node()
-                node.renderable = sphereRenderable
-                node.isEnabled = false
-
+                val sphereRenderable = ShapeFactory.makeSphere(0.02f, Vector3(0f, 0f, 0f), material)
+                val node = Node().apply {
+                    renderable = sphereRenderable
+                    isEnabled = false
+                }
                 arFragment.arSceneView.scene.addChild(node)
                 bolaNode = node
             }
 
-        // Material para los bloques que caen (TRANSPARENTE para poder animar el alpha)
+        // Material para los bloques
         MaterialFactory.makeTransparentWithColor(this, com.google.ar.sceneform.rendering.Color(android.graphics.Color.BLUE))
             .thenAccept { material ->
                 blockMaterial = material
             }
 
         arFragment.arSceneView.scene.addOnUpdateListener { frameTime ->
-            if (bolaNode == null || blockMaterial == null) {
-                return@addOnUpdateListener
-            }
+            if (bolaNode == null || blockMaterial == null) return@addOnUpdateListener
 
             val faces = arFragment.arSceneView.session?.getAllTrackables(AugmentedFace::class.java)
             val firstTrackedFace = faces?.firstOrNull { it.trackingState == TrackingState.TRACKING }
             val now = System.currentTimeMillis()
 
             if (firstTrackedFace != null) {
+                // ... (código de movimiento de la bola y generación de bloques sin cambios)
                 bolaNode!!.isEnabled = true
                 bloques.forEach { it.isEnabled = true }
 
@@ -137,6 +146,8 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
                     if (distanceSq2D < threshold * threshold) {
                         iterator.remove() // Lo quitamos de la lista de bloques que caen
 
+                        soundPool.play(popSoundId, 1f, 1f, 1, 0, 1f) // <-- REPRODUCIR SONIDO
+
                         // Hacemos una copia del material para animarlo de forma independiente
                         block.renderable?.material = block.renderable?.material?.makeCopy()
                         animatingBlocks[block] = now // Lo añadimos a la lista de bloques que se animan
@@ -147,8 +158,10 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
                         // --- SISTEMA DE PROGRESIÓN ---
                         if (score > 0 && score % 10 == 0) {
                             fallSpeed += 0.02f // Aumentar la velocidad de caída
-                            if (spawnInterval > 500L) {
+                            if (spawnInterval > 1000L) {
                                 spawnInterval -= 500L // Reducir el intervalo de aparición
+                            }else if(spawnInterval > 500L){
+                                spawnInterval -= 100L
                             }
                         }
                         // --- FIN SISTEMA DE PROGRESIÓN ---
@@ -163,45 +176,42 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
                         return@addOnUpdateListener
                     }
                 }
-                // --- FIN DE LA LÓGICA DEL JUEGO ---
-
             } else {
-                // Si no hay cara, ocultamos todo.
                 bolaNode!!.isEnabled = false
                 bloques.forEach { it.isEnabled = false }
             }
 
             // --- LÓGICA DE ANIMACIÓN DE DESTRUCCIÓN ---
-            val animIterator = animatingBlocks.iterator()
-            while (animIterator.hasNext()) {
-                val entry = animIterator.next()
-                val block = entry.key
-                val startTime = entry.value
-                val elapsedTime = now - startTime
+            handleBlockAnimation(now)
+        }
+    }
 
-                if (elapsedTime >= animationDuration) {
-                    // La animación ha terminado, eliminamos el nodo
-                    arFragment.arSceneView.scene.removeChild(block)
-                    animIterator.remove()
-                } else {
-                    // La animación está en curso
-                    val progress = elapsedTime.toFloat() / animationDuration
+    private fun handleBlockAnimation(now: Long) {
+        val animIterator = animatingBlocks.iterator()
+        while (animIterator.hasNext()) {
+            val entry = animIterator.next()
+            val block = entry.key
+            val startTime = entry.value
+            val elapsedTime = now - startTime
 
-                    // 1. Aumentar el tamaño
-                    val initialScale = 1.0f
-                    val finalScale = 1.3f
-                    val currentScale = initialScale + (finalScale - initialScale) * progress
-                    block.localScale = Vector3(currentScale, currentScale, currentScale)
+            if (elapsedTime >= animationDuration) {
+                arFragment.arSceneView.scene.removeChild(block)
+                animIterator.remove()
+            } else {
+                val progress = elapsedTime.toFloat() / animationDuration
+                val currentScale = 1.0f + (1.3f - 1.0f) * progress
+                block.localScale = Vector3(currentScale, currentScale, currentScale)
 
-                    // 2. Hacerlo transparente
-                    block.renderable?.material?.let { material ->
-                        val blue = com.google.ar.sceneform.rendering.Color(android.graphics.Color.BLUE)
-                        val newAlpha = 1.0f - progress
-                        material.setFloat4("color", blue.r, blue.g, blue.b, newAlpha)
-                    }
+                block.renderable?.material?.let { material ->
+                    val blue = com.google.ar.sceneform.rendering.Color(android.graphics.Color.BLUE)
+                    material.setFloat4("color", blue.r, blue.g, blue.b, 1.0f - progress)
                 }
             }
-            // --- FIN LÓGICA DE ANIMACIÓN ---
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        soundPool.release() // Liberar recursos del SoundPool
     }
 }
