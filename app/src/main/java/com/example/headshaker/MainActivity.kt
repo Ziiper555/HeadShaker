@@ -145,6 +145,7 @@ class MainActivity : ComponentActivity() {
                 voice.hablar("Has seleccionado Jugar")
                 val intent = Intent(this, ArGameActivity::class.java)
                 intent.putExtra("isMusicMuted", isMusicMuted)
+                intent.putExtra("highScore", highScore)
                 gameLauncher.launch(intent)
             }
             "Musica" -> {
@@ -221,7 +222,11 @@ fun PantallaMenu(
     onEscucharClick: () -> Unit,
     previewView: PreviewView
 ) {
-    val mensajes = remember { listOf("Inclina la cabeza para navegar", "Levanta las cejas para hablar", "Di una opción") }
+    val mensajes = remember { listOf(
+        "Inclina la cabeza a la derecha para navegar",
+        "Levanta las cejas para comandos de voz",
+        "Inclina la cabeza a la izquierda para seleccionar",
+        "Comandos voz: Bajar, subir, seleccionar u opciones concretas") }
     var mensajeActual by remember { mutableStateOf(mensajes[0]) }
 
     LaunchedEffect(Unit) {

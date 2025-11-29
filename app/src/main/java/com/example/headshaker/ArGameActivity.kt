@@ -27,6 +27,7 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
     private lateinit var scoreTextView: TextView
     private lateinit var gameOverLayout: FrameLayout
     private lateinit var pauseLayout: FrameLayout
+    private lateinit var newRecordTextView: TextView
 
     // --- PROPIEDADES PARA EL JUEGO ---
     private val bloques = mutableListOf<Node>()
@@ -37,8 +38,9 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
     private var spawnInterval = 3000L
     private val gameDistance = 0.7f
     private var score = 0
+    private var highScore = 0
     private var isGameOver = false
-    private var pinkBlockSpawnChance = 0.05f // 5% de probabilidad
+    private var pinkBlockSpawnChance = 0.05f
 
     // --- PROPIEDADES PARA ANIMACIÓN ---
     private val animatingBlocks = mutableMapOf<Node, Long>()
@@ -48,6 +50,7 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
     private lateinit var soundPool: SoundPool
     private var popSoundId: Int = 0
     private var gameOverSoundId: Int = 0
+    private var newRecordSoundId: Int = 0
     private var mediaPlayer: MediaPlayer? = null
     private var isMusicMuted = false
 
@@ -56,11 +59,13 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
         setContentView(R.layout.activity_ar_game)
 
         isMusicMuted = intent.getBooleanExtra("isMusicMuted", false)
+        highScore = intent.getIntExtra("highScore", 0)
 
         arFragment = supportFragmentManager.findFragmentById(R.id.ar_fragment) as CustomArFragment
         scoreTextView = findViewById(R.id.score_text)
         gameOverLayout = findViewById(R.id.game_over_layout)
         pauseLayout = findViewById(R.id.pause_layout)
+        newRecordTextView = findViewById(R.id.new_record_text)
 
         arFragment.setOnSceneReadyListener(this)
 
@@ -70,16 +75,17 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
         soundPool = SoundPool.Builder().setMaxStreams(5).setAudioAttributes(audioAttributes).build()
         popSoundId = soundPool.load(this, R.raw.pop, 1)
         gameOverSoundId = soundPool.load(this, R.raw.gameover, 1)
+        newRecordSoundId = soundPool.load(this, R.raw.newrecord, 1)
 
         if (!isMusicMuted) {
-            mediaPlayer = MediaPlayer.create(this, R.raw.gamemusic)
-            mediaPlayer?.isLooping = true
-            mediaPlayer?.setVolume(0.4f, 0.4f)
+            mediaPlayer = MediaPlayer.create(this, R.raw.gamemusic)?.apply {
+                isLooping = true
+                setVolume(0.2f, 0.2f)
+            }
         }
     }
 
     override fun onSceneReady() {
-        // Material para la bola
         MaterialFactory.makeOpaqueWithColor(this, Color(android.graphics.Color.RED))
             .thenAccept { material ->
                 val sphereRenderable = ShapeFactory.makeSphere(0.02f, Vector3.zero(), material)
@@ -87,11 +93,9 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
                 arFragment.arSceneView.scene.addChild(bolaNode)
             }
 
-        // Material para los bloques azules
         MaterialFactory.makeTransparentWithColor(this, Color(android.graphics.Color.BLUE))
             .thenAccept { material -> blueBlockMaterial = material }
 
-        // Material para los bloques rosas
         MaterialFactory.makeTransparentWithColor(this, Color(android.graphics.Color.MAGENTA))
             .thenAccept { material -> pinkBlockMaterial = material }
 
@@ -174,30 +178,23 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
                 score++
                 scoreTextView.text = "Puntos: $score"
 
-                if (score > 0 && score % 5 == 0) {
-                    fallSpeed += 0.03f
-                    if (spawnInterval > 1000L) {
-                        pinkBlockSpawnChance += 0.01f
-                        spawnInterval -= 500L
-                    } else if (spawnInterval > 500L){
-                        pinkBlockSpawnChance += 0.01f
-                        spawnInterval -= 100L
+                if (score > 0 && score % 10 == 0) {
+                    fallSpeed += 0.015f
+                    if (spawnInterval > 2000L) {
+                        spawnInterval -= 250L
                     }
                 }
                 continue
             }
 
             if (camera.worldToScreenPoint(block.worldPosition).y >= viewHeight) {
-                if (block.name == "pink") {
-                    iterator.remove()
-                    soundPool.play(popSoundId, 1f, 1f, 1, 0, 1f)
-                    block.renderable?.material = block.renderable?.material?.makeCopy()
-                    animatingBlocks[block] = System.currentTimeMillis()
-                    continue
-                } else {
-                    // Si es azul, se acaba el juego
+                if (block.name == "blue") {
                     showGameOver()
                     return
+                } else {
+                    iterator.remove()
+                    arFragment.arSceneView.scene.removeChild(block)
+                    continue
                 }
             }
         }
@@ -206,7 +203,14 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
     private fun showGameOver() {
         isGameOver = true
         mediaPlayer?.stop()
-        soundPool.play(gameOverSoundId, 1f, 1f, 1, 0, 1f)
+
+        if (score > highScore) {
+            soundPool.play(newRecordSoundId, 1f, 1f, 1, 0, 1f)
+            newRecordTextView.visibility = View.VISIBLE
+        } else {
+            soundPool.play(gameOverSoundId, 1f, 1f, 1, 0, 1f)
+        }
+
         gameOverLayout.visibility = View.VISIBLE
 
         bolaNode?.isEnabled = false
