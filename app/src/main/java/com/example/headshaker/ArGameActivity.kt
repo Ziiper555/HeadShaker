@@ -178,12 +178,17 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
                 score++
                 scoreTextView.text = "Puntos: $score"
 
-                if (score > 0 && score % 10 == 0) {
-                    fallSpeed += 0.015f
-                    if (spawnInterval > 2000L) {
-                        spawnInterval -= 250L
+                if (score > 0 && score % 5 == 0) {
+                    fallSpeed += 0.02f
+                    if (spawnInterval > 1000L) {
+                        spawnInterval -= 500L
+                        pinkBlockSpawnChance += 0.01f
+                    } else if (spawnInterval > 500L) {
+                        spawnInterval -= 100L
+                        pinkBlockSpawnChance += 0.01f
                     }
                 }
+
                 continue
             }
 
