@@ -1,5 +1,6 @@
 package com.example.headshaker
 
+import android.content.Intent
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.SoundPool
@@ -26,7 +27,6 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
     private lateinit var gameOverLayout: FrameLayout
     private lateinit var pauseLayout: FrameLayout
 
-    // --- PROPIEDADES PARA EL JUEGO ---
     private val bloques = mutableListOf<Node>()
     private var lastBlockSpawnTime = 0L
     private var blockMaterial: Material? = null
@@ -36,11 +36,9 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
     private var score = 0
     private var isGameOver = false
 
-    // --- PROPIEDADES PARA ANIMACIÓN ---
     private val animatingBlocks = mutableMapOf<Node, Long>()
     private val animationDuration = 200L
 
-    // --- PROPIEDADES PARA SONIDO ---
     private lateinit var soundPool: SoundPool
     private var popSoundId: Int = 0
     private var gameOverSoundId: Int = 0
@@ -53,14 +51,13 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
         arFragment = supportFragmentManager.findFragmentById(R.id.ar_fragment) as CustomArFragment
         scoreTextView = findViewById(R.id.score_text)
         gameOverLayout = findViewById(R.id.game_over_layout)
-        pauseLayout = findViewById(R.id.pause_layout) // <--- Referencia al layout de pausa
+        pauseLayout = findViewById(R.id.pause_layout)
 
         arFragment.setOnSceneReadyListener(this)
 
         val audioAttributes = AudioAttributes.Builder()
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .setUsage(AudioAttributes.USAGE_GAME)
-            .build()
+            .setUsage(AudioAttributes.USAGE_GAME).build()
         soundPool = SoundPool.Builder().setMaxStreams(5).setAudioAttributes(audioAttributes).build()
         popSoundId = soundPool.load(this, R.raw.pop, 1)
         gameOverSoundId = soundPool.load(this, R.raw.gameover, 1)
@@ -72,18 +69,13 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
     override fun onSceneReady() {
         MaterialFactory.makeOpaqueWithColor(this, com.google.ar.sceneform.rendering.Color(android.graphics.Color.RED))
             .thenAccept { material ->
-                val sphereRenderable = ShapeFactory.makeSphere(0.02f, Vector3(0f, 0f, 0f), material)
-                bolaNode = Node().apply {
-                    renderable = sphereRenderable
-                    isEnabled = false
-                }
+                val sphereRenderable = ShapeFactory.makeSphere(0.02f, Vector3.zero(), material)
+                bolaNode = Node().apply { renderable = sphereRenderable; isEnabled = false }
                 arFragment.arSceneView.scene.addChild(bolaNode)
             }
 
         MaterialFactory.makeTransparentWithColor(this, com.google.ar.sceneform.rendering.Color(android.graphics.Color.BLUE))
-            .thenAccept { material ->
-                blockMaterial = material
-            }
+            .thenAccept { material -> blockMaterial = material }
 
         arFragment.arSceneView.scene.addOnUpdateListener { frameTime ->
             if (isGameOver || bolaNode == null || blockMaterial == null) return@addOnUpdateListener
@@ -93,7 +85,7 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
             val now = System.currentTimeMillis()
 
             if (firstTrackedFace != null) {
-                pauseLayout.visibility = View.GONE // Ocultar pausa
+                pauseLayout.visibility = View.GONE
                 if (mediaPlayer?.isPlaying == false) mediaPlayer?.start()
 
                 bolaNode!!.isEnabled = true
@@ -116,14 +108,12 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
                 }
 
                 updateBlocks(frameTime.deltaSeconds, view.height.toFloat(), camera)
-
             } else {
-                if (!isGameOver) pauseLayout.visibility = View.VISIBLE // Mostrar pausa
+                if (!isGameOver) pauseLayout.visibility = View.VISIBLE
                 if (mediaPlayer?.isPlaying == true) mediaPlayer?.pause()
                 bolaNode!!.isEnabled = false
                 bloques.forEach { it.isEnabled = false }
             }
-
             handleBlockAnimation(now)
         }
     }
@@ -157,9 +147,9 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
 
                 if (score > 0 && score % 10 == 0) {
                     fallSpeed += 0.03f
-                    if (spawnInterval > 1000){
+                    if (spawnInterval > 1000L) {
                         spawnInterval -= 500L
-                    } else if(spawnInterval > 500){
+                    } else if(spawnInterval > 500L) {
                         spawnInterval -= 100L
                     }
                 }
@@ -182,6 +172,10 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
         bolaNode?.isEnabled = false
         bloques.forEach { it.isEnabled = false }
         animatingBlocks.keys.forEach { it.isEnabled = false }
+
+        val resultIntent = Intent()
+        resultIntent.putExtra("score", score)
+        setResult(RESULT_OK, resultIntent)
 
         Handler(Looper.getMainLooper()).postDelayed({ finish() }, 3000)
     }

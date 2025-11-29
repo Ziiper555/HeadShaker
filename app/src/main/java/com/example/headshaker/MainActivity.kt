@@ -32,6 +32,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.delay
+import java.io.DataInputStream
+import java.io.DataOutputStream
+import java.io.FileNotFoundException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -41,50 +44,46 @@ class MainActivity : ComponentActivity() {
     private val opciones = listOf("Jugar", "Configuración", "Información", "Salir")
     private var opcionSeleccionada by mutableStateOf(0)
 
-    // Declaramos ambos controladores
+    // --- PUNTUACIÓN MÁXIMA ---
+    private var highScore by mutableStateOf(0)
+
     private lateinit var poseController: PoseController
     private lateinit var faceController: FaceController
 
-    // CameraX helpers
     private lateinit var cameraExecutor: ExecutorService
     private lateinit var previewView: PreviewView
 
-    // --- PROPIEDADES PARA SONIDO ---
     private var menuMediaPlayer: MediaPlayer? = null
 
-    private val speechLauncher =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            val data = result.data
-            if (result.resultCode == RESULT_OK && data != null) {
-                val texto =
-                    data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.get(0) ?: ""
+    // --- LAUNCHERS PARA ACTIVIDADES ---
+    private val speechLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val data = result.data
+        if (result.resultCode == RESULT_OK && data != null) {
+            val texto = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.get(0) ?: ""
+            voice.procesarTexto(texto, opciones,
+                onMenuChange = { movimiento -> opcionSeleccionada = (opcionSeleccionada + movimiento + opciones.size) % opciones.size },
+                onSeleccion = { onOpcionSeleccionada(opcionSeleccionada) },
+                onSeleccionDirecta = { index ->
+                    opcionSeleccionada = index
+                    onOpcionSeleccionada(index)
+                }
+            )
+        }
+    }
 
-                voice.procesarTexto(
-                    texto = texto,
-                    opciones = opciones,
-                    onMenuChange = { movimiento ->
-                        opcionSeleccionada =
-                            (opcionSeleccionada + movimiento + opciones.size) % opciones.size
-                    },
-                    onSeleccion = {
-                        onOpcionSeleccionada(opcionSeleccionada)
-                    },
-                    onSeleccionDirecta = { index ->
-                        opcionSeleccionada = index
-                        onOpcionSeleccionada(index)
-                    }
-                )
+    private val gameLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val score = result.data?.getIntExtra("score", 0) ?: 0
+            if (score > highScore) {
+                highScore = score
+                saveHighScore(highScore)
             }
         }
+    }
 
-    private val cameraPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (granted) {
-                startCamera()
-            } else {
-                voice.hablar("Necesito permiso de cámara para detectar movimientos.")
-            }
-        }
+    private val cameraPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) startCamera() else voice.hablar("Necesito permiso de cámara para detectar movimientos.")
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -93,13 +92,12 @@ class MainActivity : ComponentActivity() {
         voice = VoiceController(this, speechLauncher)
         cameraExecutor = Executors.newSingleThreadExecutor()
 
-        // --- INICIALIZAR MÚSICA DE MENÚ ---
+        highScore = loadHighScore()
+
         menuMediaPlayer = MediaPlayer.create(this, R.raw.menumusic)
         menuMediaPlayer?.isLooping = true
 
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
-            == PackageManager.PERMISSION_GRANTED
-        ) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
             startCamera()
         } else {
             cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
@@ -110,6 +108,7 @@ class MainActivity : ComponentActivity() {
                 PantallaMenu(
                     opciones = opciones,
                     opcionSeleccionada = opcionSeleccionada,
+                    highScore = highScore,
                     onEscucharClick = { voice.iniciarReconocimiento() },
                     previewView = previewView
                 )
@@ -117,61 +116,28 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Inicia CameraX y asigna los controladores
     @SuppressLint("UnsafeOptInUsageError")
     private fun startCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener({
             val cameraProvider = cameraProviderFuture.get()
+            val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
+            val imageAnalysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
 
-            val preview = Preview.Builder()
-                .build()
-                .also {
-                    it.setSurfaceProvider(previewView.surfaceProvider)
-                }
-
-            val imageAnalysis = ImageAnalysis.Builder()
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build()
-
-            // Inicialización de los controladores (esto no cambia)
             poseController = PoseController(
-                onMenuMove = {
-                    opcionSeleccionada =
-                        (opcionSeleccionada + 1 + opciones.size) % opciones.size
-                },
-                onMenuSelect = {
-                    onOpcionSeleccionada(opcionSeleccionada)
-                }
+                onMenuMove = { opcionSeleccionada = (opcionSeleccionada + 1 + opciones.size) % opciones.size },
+                onMenuSelect = { onOpcionSeleccionada(opcionSeleccionada) }
             )
-
-            faceController = FaceController(
-                onListen = { voice.iniciarReconocimiento() }
-            )
+            faceController = FaceController(onListen = { voice.iniciarReconocimiento() })
 
             val faceAnalyzer = faceController.getAnalyzer()
-
-            // --- ESTE BLOQUE ES EL QUE CAMBIA ---
             imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
-                // 1. Iniciamos el análisis de pose y obtenemos el Task
-                val poseTask = poseController.processImageProxy(imageProxy)
-
-                // 2. Cuando el análisis de pose termine (con éxito o no)...
-                poseTask?.addOnCompleteListener {
-                    // 3. ...iniciamos el análisis facial.
-                    // FaceController se encargará de cerrar el imageProxy.
-                    faceAnalyzer.analyze(imageProxy)
-                }
+                poseController.processImageProxy(imageProxy)?.addOnCompleteListener { faceAnalyzer.analyze(imageProxy) }
             }
-            // --- FIN DEL BLOQUE MODIFICADO ---
-
-            val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
 
             try {
                 cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(
-                    this, cameraSelector, preview, imageAnalysis
-                )
+                cameraProvider.bindToLifecycle(this, CameraSelector.DEFAULT_FRONT_CAMERA, preview, imageAnalysis)
             } catch (exc: Exception) {
                 exc.printStackTrace()
                 voice.hablar("Error al iniciar la cámara: ${exc.message}")
@@ -179,124 +145,105 @@ class MainActivity : ComponentActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
+    private fun onOpcionSeleccionada(index: Int) {
+        val opcion = opciones[index]
+        voice.hablar("Has seleccionado $opcion")
+        when (opcion) {
+            "Jugar" -> gameLauncher.launch(Intent(this, ArGameActivity::class.java))
+            "Salir" -> finish()
+        }
+    }
+
+    private fun saveHighScore(score: Int) {
+        try {
+            DataOutputStream(openFileOutput("highscore.dat", MODE_PRIVATE)).use { it.writeInt(score) }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun loadHighScore(): Int {
+        return try {
+            DataInputStream(openFileInput("highscore.dat")).use { it.readInt() }
+        } catch (e: FileNotFoundException) {
+            0
+        } catch (e: Exception) {
+            e.printStackTrace()
+            0
+        }
+    }
+
     override fun onResume() {
         super.onResume()
-        if (menuMediaPlayer?.isPlaying == false) {
-            menuMediaPlayer?.start()
-        }
+        menuMediaPlayer?.takeIf { !it.isPlaying }?.start()
     }
 
     override fun onPause() {
         super.onPause()
-        if (menuMediaPlayer?.isPlaying == true) {
-            menuMediaPlayer?.pause()
-        }
+        menuMediaPlayer?.takeIf { it.isPlaying }?.pause()
     }
 
     override fun onDestroy() {
-        // Detenemos ambos controladores
-        if (::poseController.isInitialized) {
-            poseController.stop()
-        }
-        if (::faceController.isInitialized) {
-            faceController.stop()
-        }
+        super.onDestroy()
+        if (::poseController.isInitialized) poseController.stop()
+        if (::faceController.isInitialized) faceController.stop()
         cameraExecutor.shutdown()
         voice.destruir()
-
-        // Liberar música del menú
-        menuMediaPlayer?.stop()
         menuMediaPlayer?.release()
         menuMediaPlayer = null
+    }
+}
 
-        super.onDestroy()
+@Composable
+fun PantallaMenu(
+    opciones: List<String>,
+    opcionSeleccionada: Int,
+    highScore: Int,
+    onEscucharClick: () -> Unit,
+    previewView: PreviewView
+) {
+    val mensajes = remember { listOf("Inclina la cabeza para navegar", "Levanta las cejas para hablar", "Di el nombre de una opción") }
+    var mensajeActual by remember { mutableStateOf(mensajes[0]) }
+
+    LaunchedEffect(key1 = true) {
+        var index = 0
+        while (true) {
+            delay(5000)
+            index = (index + 1) % mensajes.size
+            mensajeActual = mensajes[index]
+        }
     }
 
-    private fun onOpcionSeleccionada(index: Int) {
-        val opcion = opciones[index]
-
-        voice.hablar("Has seleccionado $opcion")
-
-        when (opcion) {
-            "Jugar" -> {
-                val intent = Intent(this, ArGameActivity::class.java)
-                startActivity(intent)
-            }
-            "Configuración" -> { /* TODO */ }
-            "Información" -> { /* TODO */ }
-            "Salir" -> { finish() }
-        }
-    }
-
-    @Composable
-    fun PantallaMenu(
-        opciones: List<String>,
-        opcionSeleccionada: Int,
-        onEscucharClick: () -> Unit,
-        previewView: PreviewView
-    ) {
-        val mensajes = remember {
-            listOf(
-                "Inclina la cabeza a la derecha para moverte por el menu",
-                "Inclina la cabeza a la izquierda para seleccionar una opción",
-                "Eleva las cejas unos momentos para activar la escucha",
-                "Di bajar, subir o seleccionar para moverte por el menu"
-            )
-        }
-        var mensajeActual by remember { mutableStateOf(mensajes[0]) }
-
-        LaunchedEffect(key1 = true) {
-            var index = 0
-            while (true) {
-                delay(5000)
-                index = (index + 1) % mensajes.size
-                mensajeActual = mensajes[index]
-            }
-        }
-
-        Box(modifier = Modifier.fillMaxSize()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(32.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-
-                opciones.forEachIndexed { index, opcion ->
-                    val isSelected = index == opcionSeleccionada
-
-                    Text(
-                        text = if (isSelected) "> $opcion" else "  $opcion",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.padding(vertical = 12.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(40.dp))
-
-                Button(onClick = onEscucharClick) {
-                    Text("Escuchar")
-                }
-
-                Spacer(modifier = Modifier.height(20.dp))
-
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(32.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            opciones.forEachIndexed { index, opcion ->
+                val isSelected = index == opcionSeleccionada
                 Text(
-                    text = mensajeActual,
-                    style = MaterialTheme.typography.bodyLarge,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(16.dp)
+                    text = if (isSelected) "> $opcion" else "  $opcion",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.padding(vertical = 12.dp)
                 )
             }
-
-            AndroidView(
-                factory = { previewView },
-                modifier = Modifier
-                    .size(width = 120.dp, height = 160.dp)
-                    .padding(16.dp)
-                    .align(Alignment.TopEnd)
-            )
+            Spacer(modifier = Modifier.height(40.dp))
+            Button(onClick = onEscucharClick) { Text("Escuchar") }
+            Spacer(modifier = Modifier.height(20.dp))
+            Text(text = mensajeActual, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
         }
+
+        AndroidView(
+            factory = { previewView },
+            modifier = Modifier.size(width = 120.dp, height = 160.dp).padding(16.dp).align(Alignment.TopEnd)
+        )
+
+        Text(
+            text = "Récord: $highScore",
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.align(Alignment.BottomStart).padding(16.dp)
+        )
     }
 }
