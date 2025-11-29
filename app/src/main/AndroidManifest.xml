@@ -26,6 +26,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.HeadShaker">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -37,6 +38,7 @@
         <activity
             android:name=".ArGameActivity"
             android:theme="@style/Theme.HeadShaker"
+            android:screenOrientation="portrait"
             android:exported="true"/>
     </application>
 

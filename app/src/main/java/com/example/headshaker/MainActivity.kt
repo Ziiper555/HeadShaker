@@ -12,7 +12,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
+import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import com.example.headshaker.ui.theme.HeadShakerTheme
@@ -26,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.delay
 import java.util.concurrent.ExecutorService
@@ -43,6 +46,7 @@ class MainActivity : ComponentActivity() {
 
     // CameraX helpers
     private lateinit var cameraExecutor: ExecutorService
+    private lateinit var previewView: PreviewView
 
     private val speechLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -52,13 +56,18 @@ class MainActivity : ComponentActivity() {
                     data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.get(0) ?: ""
 
                 voice.procesarTexto(
-                    texto,
+                    texto = texto,
+                    opciones = opciones,
                     onMenuChange = { movimiento ->
                         opcionSeleccionada =
                             (opcionSeleccionada + movimiento + opciones.size) % opciones.size
                     },
                     onSeleccion = {
                         onOpcionSeleccionada(opcionSeleccionada)
+                    },
+                    onSeleccionDirecta = { index ->
+                        opcionSeleccionada = index
+                        onOpcionSeleccionada(index)
                     }
                 )
             }
@@ -76,6 +85,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        previewView = PreviewView(this)
         voice = VoiceController(this, speechLauncher)
         cameraExecutor = Executors.newSingleThreadExecutor()
 
@@ -92,7 +102,8 @@ class MainActivity : ComponentActivity() {
                 PantallaMenu(
                     opciones = opciones,
                     opcionSeleccionada = opcionSeleccionada,
-                    onEscucharClick = { voice.iniciarReconocimiento() }
+                    onEscucharClick = { voice.iniciarReconocimiento() },
+                    previewView = previewView
                 )
             }
         }
@@ -104,6 +115,12 @@ class MainActivity : ComponentActivity() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener({
             val cameraProvider = cameraProviderFuture.get()
+
+            val preview = Preview.Builder()
+                .build()
+                .also {
+                    it.setSurfaceProvider(previewView.surfaceProvider)
+                }
 
             val imageAnalysis = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -145,7 +162,7 @@ class MainActivity : ComponentActivity() {
             try {
                 cameraProvider.unbindAll()
                 cameraProvider.bindToLifecycle(
-                    this, cameraSelector, imageAnalysis
+                    this, cameraSelector, preview, imageAnalysis
                 )
             } catch (exc: Exception) {
                 exc.printStackTrace()
@@ -187,13 +204,14 @@ class MainActivity : ComponentActivity() {
     fun PantallaMenu(
         opciones: List<String>,
         opcionSeleccionada: Int,
-        onEscucharClick: () -> Unit
+        onEscucharClick: () -> Unit,
+        previewView: PreviewView
     ) {
         val mensajes = remember {
             listOf(
                 "Inclina la cabeza a la derecha para moverte por el menu",
                 "Inclina la cabeza a la izquierda para seleccionar una opción",
-                "Eleva las cejas durante unos segundos para activar la escucha",
+                "Eleva las cejas unos momentos para activar la escucha",
                 "Di bajar, subir o seleccionar para moverte por el menu"
             )
         }
@@ -208,38 +226,48 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(32.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(32.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
 
-            opciones.forEachIndexed { index, opcion ->
-                val isSelected = index == opcionSeleccionada
+                opciones.forEachIndexed { index, opcion ->
+                    val isSelected = index == opcionSeleccionada
+
+                    Text(
+                        text = if (isSelected) "> $opcion" else "  $opcion",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.padding(vertical = 12.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(40.dp))
+
+                Button(onClick = onEscucharClick) {
+                    Text("Escuchar")
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
 
                 Text(
-                    text = if (isSelected) "> $opcion" else "  $opcion",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.padding(vertical = 12.dp)
+                    text = mensajeActual,
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(16.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.height(40.dp))
-
-            Button(onClick = onEscucharClick) {
-                Text("Escuchar")
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            Text(
-                text = mensajeActual,
-                style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(16.dp)
+            AndroidView(
+                factory = { previewView },
+                modifier = Modifier
+                    .size(width = 120.dp, height = 160.dp)
+                    .padding(16.dp)
+                    .align(Alignment.TopEnd)
             )
         }
     }

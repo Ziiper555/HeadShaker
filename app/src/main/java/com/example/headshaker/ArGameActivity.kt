@@ -21,10 +21,14 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
     private val bloques = mutableListOf<Node>()
     private var lastBlockSpawnTime = 0L
     private var blockMaterial: Material? = null
-    private val fallSpeed = 0.09f // metros por segundo
-    private val spawnInterval = 2000L // milisegundos para crear un bloque
+    private var fallSpeed = 0.09f // metros por segundo
+    private var spawnInterval = 3000L // milisegundos para crear un bloque
     private val gameDistance = 0.7f // Distancia (profundidad) FIJA a la que transcurre el juego
     private var score = 0
+
+    // --- PROPIEDADES PARA ANIMACIÓN ---
+    private val animatingBlocks = mutableMapOf<Node, Long>()
+    private val animationDuration = 200L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,8 +59,8 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
                 bolaNode = node
             }
 
-        // Material para los bloques que caen
-        MaterialFactory.makeOpaqueWithColor(this, com.google.ar.sceneform.rendering.Color(android.graphics.Color.BLUE))
+        // Material para los bloques que caen (TRANSPARENTE para poder animar el alpha)
+        MaterialFactory.makeTransparentWithColor(this, com.google.ar.sceneform.rendering.Color(android.graphics.Color.BLUE))
             .thenAccept { material ->
                 blockMaterial = material
             }
@@ -68,6 +72,7 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
 
             val faces = arFragment.arSceneView.session?.getAllTrackables(AugmentedFace::class.java)
             val firstTrackedFace = faces?.firstOrNull { it.trackingState == TrackingState.TRACKING }
+            val now = System.currentTimeMillis()
 
             if (firstTrackedFace != null) {
                 bolaNode!!.isEnabled = true
@@ -88,8 +93,6 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
                 bolaNode!!.localScale = Vector3(distance, distance, distance)
 
                 // --- INICIO DE LA LÓGICA DEL JUEGO ---
-
-                val now = System.currentTimeMillis()
                 val view = arFragment.arSceneView
 
                 // 2. Generar bloques desde el borde superior de la PANTALLA
@@ -132,10 +135,24 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
                     val distanceSq2D = dx * dx + dy * dy
                     val threshold = 0.04f
                     if (distanceSq2D < threshold * threshold) {
-                        iterator.remove()
-                        arFragment.arSceneView.scene.removeChild(block)
+                        iterator.remove() // Lo quitamos de la lista de bloques que caen
+
+                        // Hacemos una copia del material para animarlo de forma independiente
+                        block.renderable?.material = block.renderable?.material?.makeCopy()
+                        animatingBlocks[block] = now // Lo añadimos a la lista de bloques que se animan
+
                         score++
                         scoreTextView.text = "Puntos: $score"
+
+                        // --- SISTEMA DE PROGRESIÓN ---
+                        if (score > 0 && score % 10 == 0) {
+                            fallSpeed += 0.02f // Aumentar la velocidad de caída
+                            if (spawnInterval > 500L) {
+                                spawnInterval -= 500L // Reducir el intervalo de aparición
+                            }
+                        }
+                        // --- FIN SISTEMA DE PROGRESIÓN ---
+
                         continue
                     }
 
@@ -153,6 +170,38 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
                 bolaNode!!.isEnabled = false
                 bloques.forEach { it.isEnabled = false }
             }
+
+            // --- LÓGICA DE ANIMACIÓN DE DESTRUCCIÓN ---
+            val animIterator = animatingBlocks.iterator()
+            while (animIterator.hasNext()) {
+                val entry = animIterator.next()
+                val block = entry.key
+                val startTime = entry.value
+                val elapsedTime = now - startTime
+
+                if (elapsedTime >= animationDuration) {
+                    // La animación ha terminado, eliminamos el nodo
+                    arFragment.arSceneView.scene.removeChild(block)
+                    animIterator.remove()
+                } else {
+                    // La animación está en curso
+                    val progress = elapsedTime.toFloat() / animationDuration
+
+                    // 1. Aumentar el tamaño
+                    val initialScale = 1.0f
+                    val finalScale = 1.3f
+                    val currentScale = initialScale + (finalScale - initialScale) * progress
+                    block.localScale = Vector3(currentScale, currentScale, currentScale)
+
+                    // 2. Hacerlo transparente
+                    block.renderable?.material?.let { material ->
+                        val blue = com.google.ar.sceneform.rendering.Color(android.graphics.Color.BLUE)
+                        val newAlpha = 1.0f - progress
+                        material.setFloat4("color", blue.r, blue.g, blue.b, newAlpha)
+                    }
+                }
+            }
+            // --- FIN LÓGICA DE ANIMACIÓN ---
         }
     }
 }

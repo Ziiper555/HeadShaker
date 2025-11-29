@@ -40,11 +40,22 @@ class VoiceController(
 
     fun procesarTexto(
         texto: String,
+        opciones: List<String>,
         onMenuChange: (Int) -> Unit,
-        onSeleccion: () -> Unit
+        onSeleccion: () -> Unit,
+        onSeleccionDirecta: (Int) -> Unit
     ) {
         val t = texto.lowercase()
 
+        // Primero, comprobar si el comando es una de las opciones del menú
+        for ((index, opcion) in opciones.withIndex()) {
+            if (opcion.lowercase() in t) {
+                onSeleccionDirecta(index)
+                return // Si encontramos una coincidencia, terminamos
+            }
+        }
+
+        // Si no, procesar comandos de navegación
         when {
             "subir" in t || "arriba" in t || "sube" in t -> {
                 onMenuChange(-1)
