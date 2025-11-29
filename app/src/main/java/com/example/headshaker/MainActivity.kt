@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.MediaPlayer
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import androidx.activity.ComponentActivity
@@ -48,6 +49,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var cameraExecutor: ExecutorService
     private lateinit var previewView: PreviewView
 
+    // --- PROPIEDADES PARA SONIDO ---
+    private var menuMediaPlayer: MediaPlayer? = null
+
     private val speechLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             val data = result.data
@@ -88,6 +92,10 @@ class MainActivity : ComponentActivity() {
         previewView = PreviewView(this)
         voice = VoiceController(this, speechLauncher)
         cameraExecutor = Executors.newSingleThreadExecutor()
+
+        // --- INICIALIZAR MÚSICA DE MENÚ ---
+        menuMediaPlayer = MediaPlayer.create(this, R.raw.menumusic)
+        menuMediaPlayer?.isLooping = true
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             == PackageManager.PERMISSION_GRANTED
@@ -171,6 +179,20 @@ class MainActivity : ComponentActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (menuMediaPlayer?.isPlaying == false) {
+            menuMediaPlayer?.start()
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (menuMediaPlayer?.isPlaying == true) {
+            menuMediaPlayer?.pause()
+        }
+    }
+
     override fun onDestroy() {
         // Detenemos ambos controladores
         if (::poseController.isInitialized) {
@@ -181,6 +203,12 @@ class MainActivity : ComponentActivity() {
         }
         cameraExecutor.shutdown()
         voice.destruir()
+
+        // Liberar música del menú
+        menuMediaPlayer?.stop()
+        menuMediaPlayer?.release()
+        menuMediaPlayer = null
+
         super.onDestroy()
     }
 

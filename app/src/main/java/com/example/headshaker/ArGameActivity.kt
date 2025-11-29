@@ -1,6 +1,7 @@
 package com.example.headshaker
 
 import android.media.AudioAttributes
+import android.media.MediaPlayer
 import android.media.SoundPool
 import android.os.Bundle
 import android.widget.TextView
@@ -35,6 +36,7 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
     // --- PROPIEDADES PARA SONIDO ---
     private lateinit var soundPool: SoundPool
     private var popSoundId: Int = 0
+    private var mediaPlayer: MediaPlayer? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,18 +48,21 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
 
         arFragment.setOnSceneReadyListener(this)
 
-        // --- INICIALIZAR SOUNDPOOL ---
+        // --- INICIALIZAR SONIDO ---
         val audioAttributes = AudioAttributes.Builder()
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .setUsage(AudioAttributes.USAGE_GAME)
             .build()
         soundPool = SoundPool.Builder().setMaxStreams(5).setAudioAttributes(audioAttributes).build()
         popSoundId = soundPool.load(this, R.raw.pop, 1)
-        // ---------------------------
+
+        // --- INICIALIZAR MÚSICA DE FONDO ---
+        mediaPlayer = MediaPlayer.create(this, R.raw.gamemusic)
+        mediaPlayer?.isLooping = true
     }
 
     override fun onSceneReady() {
-        // Material para la bola
+        // ... (código de inicialización de materiales sin cambios) ...
         MaterialFactory.makeOpaqueWithColor(this, com.google.ar.sceneform.rendering.Color(android.graphics.Color.RED))
             .thenAccept { material ->
                 val sphereRenderable = ShapeFactory.makeSphere(0.02f, Vector3(0f, 0f, 0f), material)
@@ -75,6 +80,7 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
                 blockMaterial = material
             }
 
+
         arFragment.arSceneView.scene.addOnUpdateListener { frameTime ->
             if (bolaNode == null || blockMaterial == null) return@addOnUpdateListener
 
@@ -83,110 +89,97 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
             val now = System.currentTimeMillis()
 
             if (firstTrackedFace != null) {
-                // ... (código de movimiento de la bola y generación de bloques sin cambios)
+                if (mediaPlayer?.isPlaying == false) {
+                    mediaPlayer?.start()
+                }
+
+                // ... (código de lógica del juego sin cambios) ...
                 bolaNode!!.isEnabled = true
                 bloques.forEach { it.isEnabled = true }
 
                 val camera = arFragment.arSceneView.scene.camera
 
-                // --- POSICIÓN DE LA BOLA CON Z FIJO (CORREGIDO) ---
                 val nosePose = firstTrackedFace.getRegionPose(AugmentedFace.RegionType.NOSE_TIP)
                 val noseWorldPos = Vector3(nosePose.tx(), nosePose.ty(), nosePose.tz())
                 val noseScreenPos = camera.worldToScreenPoint(noseWorldPos)
                 val bolaRay = camera.screenPointToRay(noseScreenPos.x, noseScreenPos.y)
                 bolaNode!!.worldPosition = bolaRay.getPoint(gameDistance)
-                // --- FIN POSICIÓN BOLA ---
 
-                // Escalar la bola para que parezca de tamaño constante
                 val distance = Vector3.subtract(camera.worldPosition, bolaNode!!.worldPosition).length()
                 bolaNode!!.localScale = Vector3(distance, distance, distance)
 
-                // --- INICIO DE LA LÓGICA DEL JUEGO ---
                 val view = arFragment.arSceneView
 
-                // 2. Generar bloques desde el borde superior de la PANTALLA
                 if (now - lastBlockSpawnTime > spawnInterval) {
                     lastBlockSpawnTime = now
-
                     val block = Node()
                     block.renderable = ShapeFactory.makeCube(
-                        Vector3(0.06f, 0.06f, 0.06f), // tamaño del cubo
+                        Vector3(0.06f, 0.06f, 0.06f),
                         Vector3.zero(),
                         blockMaterial
                     )
-
                     val screenWidth = view.width.toFloat()
                     val randomScreenX = (screenWidth / 2f) + (Math.random().toFloat() * 800f - 400f)
-
                     val spawnRay = camera.screenPointToRay(randomScreenX, 0f)
                     block.worldPosition = spawnRay.getPoint(gameDistance)
-
                     arFragment.arSceneView.scene.addChild(block)
                     bloques.add(block)
                 }
 
-                // 3. Mover bloques, detectar colisiones y fin del juego
                 val viewHeight = view.height.toFloat()
                 val iterator = bloques.iterator()
                 while(iterator.hasNext()){
                     val block = iterator.next()
-
-                    // Mover el bloque hacia abajo
                     block.worldPosition = Vector3(
                         block.worldPosition.x,
                         block.worldPosition.y - fallSpeed * frameTime.deltaSeconds,
                         block.worldPosition.z
                     )
 
-                    // Detectar colisión con la bola (2D)
                     val dx = block.worldPosition.x - bolaNode!!.worldPosition.x
                     val dy = block.worldPosition.y - bolaNode!!.worldPosition.y
                     val distanceSq2D = dx * dx + dy * dy
                     val threshold = 0.04f
                     if (distanceSq2D < threshold * threshold) {
-                        iterator.remove() // Lo quitamos de la lista de bloques que caen
-
-                        soundPool.play(popSoundId, 1f, 1f, 1, 0, 1f) // <-- REPRODUCIR SONIDO
-
-                        // Hacemos una copia del material para animarlo de forma independiente
+                        iterator.remove()
+                        soundPool.play(popSoundId, 1f, 1f, 1, 0, 1f)
                         block.renderable?.material = block.renderable?.material?.makeCopy()
-                        animatingBlocks[block] = now // Lo añadimos a la lista de bloques que se animan
-
+                        animatingBlocks[block] = now
                         score++
                         scoreTextView.text = "Puntos: $score"
 
-                        // --- SISTEMA DE PROGRESIÓN ---
                         if (score > 0 && score % 10 == 0) {
-                            fallSpeed += 0.02f // Aumentar la velocidad de caída
+                            fallSpeed += 0.02f
                             if (spawnInterval > 1000L) {
-                                spawnInterval -= 500L // Reducir el intervalo de aparición
-                            }else if(spawnInterval > 500L){
+                                spawnInterval -= 500L
+                            } else if(spawnInterval > 500L){
                                 spawnInterval -= 100L
                             }
                         }
-                        // --- FIN SISTEMA DE PROGRESIÓN ---
-
                         continue
                     }
 
                     val screenPos = camera.worldToScreenPoint(block.worldPosition)
-
                     if (screenPos.y >= viewHeight) {
                         finish()
                         return@addOnUpdateListener
                     }
                 }
+
             } else {
+                if (mediaPlayer?.isPlaying == true) {
+                    mediaPlayer?.pause()
+                }
                 bolaNode!!.isEnabled = false
                 bloques.forEach { it.isEnabled = false }
             }
 
-            // --- LÓGICA DE ANIMACIÓN DE DESTRUCCIÓN ---
             handleBlockAnimation(now)
         }
     }
 
     private fun handleBlockAnimation(now: Long) {
+        // ... (código de animación de bloques sin cambios) ...
         val animIterator = animatingBlocks.iterator()
         while (animIterator.hasNext()) {
             val entry = animIterator.next()
@@ -210,8 +203,24 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
         }
     }
 
+    override fun onPause() {
+        super.onPause()
+        if (mediaPlayer?.isPlaying == true) {
+            mediaPlayer?.pause()
+        }
+        soundPool.autoPause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        soundPool.autoResume()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
-        soundPool.release() // Liberar recursos del SoundPool
+        soundPool.release()
+        mediaPlayer?.stop()
+        mediaPlayer?.release()
+        mediaPlayer = null
     }
 }
