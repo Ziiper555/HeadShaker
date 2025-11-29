@@ -24,6 +24,7 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
     private var bolaNode: Node? = null
     private lateinit var scoreTextView: TextView
     private lateinit var gameOverLayout: FrameLayout
+    private lateinit var pauseLayout: FrameLayout
 
     // --- PROPIEDADES PARA EL JUEGO ---
     private val bloques = mutableListOf<Node>()
@@ -52,6 +53,7 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
         arFragment = supportFragmentManager.findFragmentById(R.id.ar_fragment) as CustomArFragment
         scoreTextView = findViewById(R.id.score_text)
         gameOverLayout = findViewById(R.id.game_over_layout)
+        pauseLayout = findViewById(R.id.pause_layout) // <--- Referencia al layout de pausa
 
         arFragment.setOnSceneReadyListener(this)
 
@@ -91,6 +93,7 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
             val now = System.currentTimeMillis()
 
             if (firstTrackedFace != null) {
+                pauseLayout.visibility = View.GONE // Ocultar pausa
                 if (mediaPlayer?.isPlaying == false) mediaPlayer?.start()
 
                 bolaNode!!.isEnabled = true
@@ -115,6 +118,7 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
                 updateBlocks(frameTime.deltaSeconds, view.height.toFloat(), camera)
 
             } else {
+                if (!isGameOver) pauseLayout.visibility = View.VISIBLE // Mostrar pausa
                 if (mediaPlayer?.isPlaying == true) mediaPlayer?.pause()
                 bolaNode!!.isEnabled = false
                 bloques.forEach { it.isEnabled = false }
@@ -152,8 +156,12 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
                 scoreTextView.text = "Puntos: $score"
 
                 if (score > 0 && score % 10 == 0) {
-                    fallSpeed += 0.02f
-                    if (spawnInterval > 500L) spawnInterval -= 250L
+                    fallSpeed += 0.03f
+                    if (spawnInterval > 1000){
+                        spawnInterval -= 500L
+                    } else if(spawnInterval > 500){
+                        spawnInterval -= 100L
+                    }
                 }
                 continue
             }
@@ -171,7 +179,6 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
         soundPool.play(gameOverSoundId, 1f, 1f, 1, 0, 1f)
         gameOverLayout.visibility = View.VISIBLE
 
-        // Ocultar todos los nodos del juego
         bolaNode?.isEnabled = false
         bloques.forEach { it.isEnabled = false }
         animatingBlocks.keys.forEach { it.isEnabled = false }

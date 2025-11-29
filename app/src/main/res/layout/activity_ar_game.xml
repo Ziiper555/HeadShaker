@@ -24,6 +24,26 @@
         android:text="Puntos: 0"
         tools:text="Puntos: 10" />
 
+    <!-- PAUSE Screen -->
+    <FrameLayout
+        android:id="@+id/pause_layout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#A0000000"
+        android:visibility="gone"
+        tools:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:text="PAUSA"
+            android:textColor="@android:color/white"
+            android:textSize="48sp"
+            android:textStyle="bold" />
+
+    </FrameLayout>
+
     <!-- GAME OVER Screen -->
     <FrameLayout
         android:id="@+id/game_over_layout"
