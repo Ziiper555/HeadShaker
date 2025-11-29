@@ -20,7 +20,7 @@ class FaceController(
     private val holdTime = 2000L
 
     // Umbral de distancia vertical entre ceja y ojo (ajustable)
-    private val eyebrowThreshold = 40f
+    private val eyebrowThreshold = 45f
 
     private var eyebrowRaiseStart: Long? = null
 

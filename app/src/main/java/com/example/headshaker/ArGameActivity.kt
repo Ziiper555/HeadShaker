@@ -43,10 +43,13 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
     private var popSoundId: Int = 0
     private var gameOverSoundId: Int = 0
     private var mediaPlayer: MediaPlayer? = null
+    private var isMusicMuted = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_ar_game)
+
+        isMusicMuted = intent.getBooleanExtra("isMusicMuted", false)
 
         arFragment = supportFragmentManager.findFragmentById(R.id.ar_fragment) as CustomArFragment
         scoreTextView = findViewById(R.id.score_text)
@@ -62,8 +65,10 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
         popSoundId = soundPool.load(this, R.raw.pop, 1)
         gameOverSoundId = soundPool.load(this, R.raw.gameover, 1)
 
-        mediaPlayer = MediaPlayer.create(this, R.raw.gamemusic)
-        mediaPlayer?.isLooping = true
+        if (!isMusicMuted) {
+            mediaPlayer = MediaPlayer.create(this, R.raw.gamemusic)
+            mediaPlayer?.isLooping = true
+        }
     }
 
     override fun onSceneReady() {
@@ -86,7 +91,7 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
 
             if (firstTrackedFace != null) {
                 pauseLayout.visibility = View.GONE
-                if (mediaPlayer?.isPlaying == false) mediaPlayer?.start()
+                if (!isMusicMuted && mediaPlayer?.isPlaying == false) mediaPlayer?.start()
 
                 bolaNode!!.isEnabled = true
                 bloques.forEach { it.isEnabled = true }
@@ -145,11 +150,11 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
                 score++
                 scoreTextView.text = "Puntos: $score"
 
-                if (score > 0 && score % 10 == 0) {
+                if (score > 0 && score % 5 == 0) {
                     fallSpeed += 0.03f
                     if (spawnInterval > 1000L) {
                         spawnInterval -= 500L
-                    } else if(spawnInterval > 500L) {
+                    } else if (spawnInterval > 500L){
                         spawnInterval -= 100L
                     }
                 }
