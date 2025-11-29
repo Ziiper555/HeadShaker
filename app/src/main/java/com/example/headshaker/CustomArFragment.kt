@@ -16,9 +16,17 @@ class CustomArFragment : ArFragment() {
 
     private var onSceneReadyListener: OnSceneReadyListener? = null
 
+    // 📌 Aquí está lo que te faltaba
+    fun setOnSceneReadyListener(listener: OnSceneReadyListener) {
+        onSceneReadyListener = listener
+    }
+
     override fun onAttach(context: Context) {
         super.onAttach(context)
-        onSceneReadyListener = context as? OnSceneReadyListener
+        // Si la activity implementa la interfaz, se asigna automáticamente
+        if (context is OnSceneReadyListener) {
+            onSceneReadyListener = context
+        }
     }
 
     override fun onDetach() {
@@ -28,20 +36,27 @@ class CustomArFragment : ArFragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        // Ocultar la mano de detección y el plano
+
+        // Ocultar la mano y planos
         planeDiscoveryController.hide()
         planeDiscoveryController.setInstructionView(null)
         arSceneView.planeRenderer.isEnabled = false
+
+        // Lanzar evento
         onSceneReadyListener?.onSceneReady()
     }
 
     override fun getSessionConfiguration(session: Session): Config {
         val config = super.getSessionConfiguration(session)
+
+        // Activar seguimiento de cara
         config.augmentedFaceMode = Config.AugmentedFaceMode.MESH3D
+
         return config
     }
 
     override fun getSessionFeatures(): Set<Session.Feature> {
+        // Usar cámara frontal
         return EnumSet.of(Session.Feature.FRONT_CAMERA)
     }
 }
