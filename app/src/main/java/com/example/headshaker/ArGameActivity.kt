@@ -15,6 +15,7 @@ import com.google.ar.core.AugmentedFace
 import com.google.ar.core.TrackingState
 import com.google.ar.sceneform.Node
 import com.google.ar.sceneform.math.Vector3
+import com.google.ar.sceneform.rendering.Color
 import com.google.ar.sceneform.rendering.Material
 import com.google.ar.sceneform.rendering.MaterialFactory
 import com.google.ar.sceneform.rendering.ShapeFactory
@@ -27,18 +28,23 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
     private lateinit var gameOverLayout: FrameLayout
     private lateinit var pauseLayout: FrameLayout
 
+    // --- PROPIEDADES PARA EL JUEGO ---
     private val bloques = mutableListOf<Node>()
     private var lastBlockSpawnTime = 0L
-    private var blockMaterial: Material? = null
+    private var blueBlockMaterial: Material? = null
+    private var pinkBlockMaterial: Material? = null
     private var fallSpeed = 0.09f
     private var spawnInterval = 3000L
     private val gameDistance = 0.7f
     private var score = 0
     private var isGameOver = false
+    private var pinkBlockSpawnChance = 0.05f // 5% de probabilidad
 
+    // --- PROPIEDADES PARA ANIMACIÓN ---
     private val animatingBlocks = mutableMapOf<Node, Long>()
     private val animationDuration = 200L
 
+    // --- PROPIEDADES PARA SONIDO ---
     private lateinit var soundPool: SoundPool
     private var popSoundId: Int = 0
     private var gameOverSoundId: Int = 0
@@ -68,22 +74,29 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
         if (!isMusicMuted) {
             mediaPlayer = MediaPlayer.create(this, R.raw.gamemusic)
             mediaPlayer?.isLooping = true
+            mediaPlayer?.setVolume(0.4f, 0.4f)
         }
     }
 
     override fun onSceneReady() {
-        MaterialFactory.makeOpaqueWithColor(this, com.google.ar.sceneform.rendering.Color(android.graphics.Color.RED))
+        // Material para la bola
+        MaterialFactory.makeOpaqueWithColor(this, Color(android.graphics.Color.RED))
             .thenAccept { material ->
                 val sphereRenderable = ShapeFactory.makeSphere(0.02f, Vector3.zero(), material)
                 bolaNode = Node().apply { renderable = sphereRenderable; isEnabled = false }
                 arFragment.arSceneView.scene.addChild(bolaNode)
             }
 
-        MaterialFactory.makeTransparentWithColor(this, com.google.ar.sceneform.rendering.Color(android.graphics.Color.BLUE))
-            .thenAccept { material -> blockMaterial = material }
+        // Material para los bloques azules
+        MaterialFactory.makeTransparentWithColor(this, Color(android.graphics.Color.BLUE))
+            .thenAccept { material -> blueBlockMaterial = material }
+
+        // Material para los bloques rosas
+        MaterialFactory.makeTransparentWithColor(this, Color(android.graphics.Color.MAGENTA))
+            .thenAccept { material -> pinkBlockMaterial = material }
 
         arFragment.arSceneView.scene.addOnUpdateListener { frameTime ->
-            if (isGameOver || bolaNode == null || blockMaterial == null) return@addOnUpdateListener
+            if (isGameOver || bolaNode == null || blueBlockMaterial == null || pinkBlockMaterial == null) return@addOnUpdateListener
 
             val faces = arFragment.arSceneView.session?.getAllTrackables(AugmentedFace::class.java)
             val firstTrackedFace = faces?.firstOrNull { it.trackingState == TrackingState.TRACKING }
@@ -126,9 +139,15 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
     private fun spawnNewBlock(camera: com.google.ar.sceneform.Camera, screenWidth: Float) {
         val randomScreenX = (screenWidth / 2f) + (Math.random().toFloat() * 800f - 400f)
         val spawnRay = camera.screenPointToRay(randomScreenX, 0f)
+
+        val isPink = Math.random() < pinkBlockSpawnChance
+        val material = if (isPink) pinkBlockMaterial else blueBlockMaterial
+        val name = if (isPink) "pink" else "blue"
+
         val block = Node().apply {
-            renderable = ShapeFactory.makeCube(Vector3(0.06f, 0.06f, 0.06f), Vector3.zero(), blockMaterial)
+            renderable = ShapeFactory.makeCube(Vector3(0.06f, 0.06f, 0.06f), Vector3.zero(), material)
             worldPosition = spawnRay.getPoint(gameDistance)
+            this.name = name
         }
         arFragment.arSceneView.scene.addChild(block)
         bloques.add(block)
@@ -143,6 +162,11 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
             val dx = block.worldPosition.x - bolaNode!!.worldPosition.x
             val dy = block.worldPosition.y - bolaNode!!.worldPosition.y
             if (dx * dx + dy * dy < 0.04f * 0.04f) {
+                if (block.name == "pink") {
+                    showGameOver()
+                    return
+                }
+
                 iterator.remove()
                 soundPool.play(popSoundId, 1f, 1f, 1, 0, 1f)
                 block.renderable?.material = block.renderable?.material?.makeCopy()
@@ -153,8 +177,10 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
                 if (score > 0 && score % 5 == 0) {
                     fallSpeed += 0.03f
                     if (spawnInterval > 1000L) {
+                        pinkBlockSpawnChance += 0.01f
                         spawnInterval -= 500L
                     } else if (spawnInterval > 500L){
+                        pinkBlockSpawnChance += 0.01f
                         spawnInterval -= 100L
                     }
                 }
@@ -162,8 +188,17 @@ class ArGameActivity : AppCompatActivity(), CustomArFragment.OnSceneReadyListene
             }
 
             if (camera.worldToScreenPoint(block.worldPosition).y >= viewHeight) {
-                showGameOver()
-                return
+                if (block.name == "pink") {
+                    iterator.remove()
+                    soundPool.play(popSoundId, 1f, 1f, 1, 0, 1f)
+                    block.renderable?.material = block.renderable?.material?.makeCopy()
+                    animatingBlocks[block] = System.currentTimeMillis()
+                    continue
+                } else {
+                    // Si es azul, se acaba el juego
+                    showGameOver()
+                    return
+                }
             }
         }
     }

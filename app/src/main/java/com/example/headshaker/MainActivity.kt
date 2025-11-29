@@ -88,7 +88,10 @@ class MainActivity : ComponentActivity() {
         isMusicMuted = loadMusicMuted()
 
         if (!isMusicMuted) {
-            menuMediaPlayer = MediaPlayer.create(this, R.raw.menumusic)?.apply { isLooping = true }
+            menuMediaPlayer = MediaPlayer.create(this, R.raw.menumusic)?.apply {
+                isLooping = true
+                setVolume(0.2f, 0.2f)
+            }
         }
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
@@ -152,13 +155,16 @@ class MainActivity : ComponentActivity() {
                     voice.hablar("Música desactivada")
                 } else {
                     if (menuMediaPlayer == null) {
-                        menuMediaPlayer = MediaPlayer.create(this, R.raw.menumusic)?.apply { isLooping = true }
+                        menuMediaPlayer = MediaPlayer.create(this, R.raw.menumusic)?.apply {
+                            isLooping = true
+                            setVolume(0.4f, 0.4f)
+                        }
                     }
                     menuMediaPlayer?.start()
                     voice.hablar("Música activada")
                 }
             }
-            "Información" -> voice.hablar("Hay que romper los bloques con la bola para que no toquen el fondo")
+            "Información" -> voice.hablar("Rompe los bloques azules, no toques los bloques rosas")
             "Salir" -> finish()
         }
     }
