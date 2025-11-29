@@ -158,7 +158,7 @@ class MainActivity : ComponentActivity() {
                     voice.hablar("Música activada")
                 }
             }
-            "Información" -> voice.hablar("Has seleccionado Información")
+            "Información" -> voice.hablar("Hay que romper los bloques con la bola para que no toquen el fondo")
             "Salir" -> finish()
         }
     }
